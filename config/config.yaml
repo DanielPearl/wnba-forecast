@@ -1,0 +1,133 @@
+# Kalshi WNBA forecast bot config.
+#
+# Mirrors the NBA bot's layout. Key differences:
+#   • Each market is a binary "team X wins this game" — no above/below
+#     thresholds, so the model is a single binary classifier.
+#   • Active hours are WNBA tip-off windows (noon to ~22:00 ET).
+#   • Training pulls multi-season ESPN box scores (no API key).
+#   • Seasons are calendar years ('2024'); each is ~240 games, so the
+#     hold-out / calibration windows are smaller than the NBA bot's.
+
+env:
+  api_key_id: ${KALSHI_API_KEY_ID}
+  private_key_path: ${KALSHI_PRIVATE_KEY_PATH}
+  log_path: data/bot.log
+
+run:
+  # KXWNBAGAME — one market per individual WNBA game (two markets per
+  # event, one per team). Source: see market_scanner.py.
+  market_series_prefixes: ["KXWNBAGAME"]
+  # Active polling: 3 min during WNBA hours (lots of pre-tip line
+  # movement worth catching). Idle: hourly.
+  poll_interval_seconds_active: 180
+  poll_interval_seconds_idle: 3600
+  # Trade window: 11 AM ET to 23:59 ET. Covers noon ESPN games through
+  # the typical 19:00-22:00 evening slate.
+  market_hours_start: "11:00"
+  market_hours_end: "23:59"
+  max_markets_per_poll: 40
+  # Seasons used for training (calendar years). Each is cached to disk so
+  # a re-train only re-fetches the current (in-progress) season. We start
+  # at 2021 to keep the panel modern (12->15-team expansion, pace/3pt
+  # era) while still giving the rolling features ~5 seasons of history.
+  training_seasons:
+    - "2021"
+    - "2022"
+    - "2023"
+    - "2024"
+    - "2025"
+    - "2026"
+
+model:
+  test_size_games: 240             # ~1 WNBA regular season hold-out
+  walk_forward_splits: 5
+  ensemble_seeds: 5
+  calibration_holdout_games: 120
+  retrain_day_of_week: 0           # Mon
+  retrain_hour_et: 6
+  artifact_path: data/model.pkl
+  # ~150 raw features (Four Factors × 3 windows × 2 sides + diffs +
+  # ELO + schedule + H2H). Walk-forward selector prunes to ~20 — fewer
+  # than NBA because the WNBA panel is ~1/8th the size.
+  max_features: 20
+  feature_min_positive_folds: 3
+  feature_correlation_max: 0.92
+
+edge:
+  # NBA bot deviates from UNIFIED_EDGE_DEFAULTS on two secondary floors.
+  # See decision.blended_prob_yes for the math.
+  #
+  # The unified breakeven/EV floors were calibrated for time-series bots
+  # whose model gets full weight at long TTC. NBA is a pre-game classifier
+  # — we don't apply sqrt(TTC) decay, so the blended posterior weights the
+  # model at exactly `skill = 2·accuracy − 1`. At the current 0.67
+  # accuracy, skill ≈ 0.34, so the blended edge over breakeven is
+  # ~0.34 × raw_edge. A 6pp raw disagreement (= the unified raw_floor)
+  # therefore produces only a 2pp blended edge — far below the unified
+  # 5pp/3¢ floors, which would leave zero trades.
+  #
+  # `min_raw_model_edge` stays at the unified 0.06 — that IS the real-edge
+  # filter (the model must disagree with the market by ≥6pp before the
+  # blend). The breakeven/EV floors are dropped to the arithmetic floor
+  # achievable when raw_edge = 0.06 minus a small half-spread allowance.
+  # `min_model_confidence` is checked against RAW conviction (see
+  # main._record_view) so we skip genuinely-coin-flip raw model views.
+  min_edge_yes: 0.005
+  min_edge_no: 0.005
+  min_model_confidence: 0.45        # checked vs RAW model conviction
+  # min_confidence scales with model_accuracy (|raw-0.5|×2×acc). At unified
+  # 0.10 this requires ~7pp raw conviction at the current 0.673 accuracy —
+  # stricter than min_model_confidence (5pp) and the binding gate that
+  # rejected every 6-7pp raw edge. Drop to 0.05 → ~4pp raw conviction
+  # required (looser than min_model_confidence, so it becomes a sanity-
+  # check rather than a binding constraint). Auto-tightens to 5pp at the
+  # min accepted accuracy of 0.55 so it never goes below min_model_conf.
+  min_confidence: 0.05
+  min_model_accuracy: 0.55
+  min_ev_per_contract: 0.005        # ≥½¢ EV after fees/half-spread
+  min_prob_edge_over_breakeven: 0.015  # 0.34 × 0.08 ≈ 0.027 max → 0.015 buffer
+  # Tighter than unified 0.06: with model accuracy only 0.67 (Brier 0.21),
+  # 6pp raw disagreement is within model noise. 8pp is a stronger filter
+  # that the model and market materially disagree. Open positions whose
+  # raw edge drops below this floor are auto-closed at mid (main.py:518).
+  min_raw_model_edge: 0.08
+  max_entry_price_cents: 70
+
+hedge:
+  enabled: true
+  profit_lock_cents: 25
+  stop_loss_cents: 18
+  hedge_size_fraction: 1.0
+
+validators:
+  # Unified cautious floor across every Kalshi bot. See
+  # kalshi_sdk.validators.UNIFIED_VALIDATOR_DEFAULTS for the rationale.
+  min_book_depth_contracts: 100
+  max_spread_cents: 6
+  min_minutes_to_close: 30
+  max_minutes_to_close: 10080      # 7 days (NBA listing horizon)
+  prob_bounds_cents: [25, 75]
+  min_volume: 50
+  min_open_interest: 50
+  min_depth_at_best_ask: 25
+  # NBA equivalent of basis-risk: skip the last 30 min before tip when
+  # any rumor of a star scratching can move the line 5pp+. Field name
+  # kept for cross-bot config-loader symmetry; "strike_window" is
+  # repurposed as a placeholder (always 0 here — guard fires purely
+  # on hours-to-close).
+  basis_risk_strike_window_dollars: 0
+  basis_risk_max_hours_to_close: 0.5
+
+risk:
+  # NBA is a high-volume series — many games per night. Allow more
+  # parallel exposure than the once-monthly CPI bot.
+  bet_size_cents: 100
+  max_open_positions: 5
+  max_total_exposure_cents: 500
+  max_bets_per_day: 20
+  cooldown_seconds_same_market: 1800   # 30 min between bets on same ticker
+
+execution:
+  dry_run: true
+  sim_db_path: data/sim.db
+  decisions_log_path: data/decisions.jsonl

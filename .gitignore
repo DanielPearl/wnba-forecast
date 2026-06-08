@@ -1,0 +1,54 @@
+# --- secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+**/Secret Keys/
+kalshi_api_key.*
+kalshi_private_key.*
+
+# --- python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# --- runtime data ---
+data/
+logs/
+*.log
+*.jsonl
+*.db
+*.sqlite
+
+# --- model artifacts ---
+artifacts/
+*.joblib
+*.pkl
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- claude code local settings ---
+.claude/
+
+# --- notebooks ---
+.ipynb_checkpoints/
