@@ -89,6 +89,20 @@ def normalize_tricode(code: str) -> str:
     return TEAM_TRICODE_ALIASES.get(code, code)
 
 
+# Repo root (…/WNBA Forecast), two levels up from src/wnba_bot. Cache
+# dirs are anchored here so the cache is found regardless of the
+# process's cwd — critical when the bot runs IN-PROCESS inside the
+# dashboard (cwd=/root/trading-dashboard), not from its own repo dir.
+# Without this the in-dashboard bot would re-download every ESPN box
+# score on each panel refresh instead of reusing the trained cache.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_cache(cache_dir: str) -> str:
+    p = Path(cache_dir)
+    return str(p if p.is_absolute() else _REPO_ROOT / p)
+
+
 # WNBA regulation is 4 × 10 min = 40 min → 5 players × 40 = 200 team-min.
 # Each overtime adds 5 min × 5 players = 25 team-min. Used only to scale
 # PACE, which the model consumes as a relative feature, so the exact
@@ -283,6 +297,7 @@ def fetch_season_game_logs(
     ``refetch_if_stale_hours`` so a re-train picks up new games; past
     seasons are cached forever (they never change).
     """
+    cache_dir = _resolve_cache(cache_dir)
     cache_path = Path(cache_dir) / f"gamelog_{season}.csv"
     if cache_path.exists():
         age_h = (time.time() - cache_path.stat().st_mtime) / 3600.0
@@ -406,6 +421,7 @@ def fetch_espn_scoreboard(
     ``cache_ttl_seconds``.
     """
     cache_key = date_yyyymmdd or "today"
+    cache_dir = _resolve_cache(cache_dir)
     cache_path = Path(cache_dir) / f"scoreboard_{cache_key}.json"
     if cache_path.exists():
         try:
@@ -493,6 +509,7 @@ def fetch_espn_injuries(
     NBA bot's failure-backoff behaviour so a broken page doesn't hammer
     ESPN every 10 minutes.
     """
+    cache_dir = _resolve_cache(cache_dir)
     cache_path = Path(cache_dir) / "injuries.json"
     if cache_path.exists():
         try:
@@ -615,6 +632,7 @@ def fetch_odds_api_moneylines(
     api_key = os.environ.get("THE_ODDS_API_KEY", "").strip()
     if not api_key:
         return {}
+    cache_dir = _resolve_cache(cache_dir)
     cache_path = Path(cache_dir) / "moneylines.json"
     if cache_path.exists():
         try:
