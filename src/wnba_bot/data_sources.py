@@ -688,3 +688,53 @@ def fetch_odds_api_moneylines(
     except Exception as exc:  # noqa: BLE001
         log.debug("odds cache write failed: %s", exc)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Pinnacle (sharp) devigged probabilities — used as the tennis-style
+# reference line for edge calculation vs Kalshi.
+# --------------------------------------------------------------------------- #
+
+def fetch_pinnacle_probs_by_pair(
+) -> Dict[Tuple[str, str], Dict[str, float]]:
+    """Return Pinnacle-devigged pre-game WNBA win probabilities keyed by
+    ``(away_tricode, home_tricode)``.
+
+    Mirrors ``Tennis Forecast``'s Pinnacle path so both bots feed the
+    same shared BUY gate the same reference. Backed by
+    ``kalshi_sdk.pinnacle.pinnacle_probs_by_pair`` — the network call,
+    devig, and cache all live there. This wrapper just maps the
+    returned ESPN-style team names onto WNBA tricodes so downstream
+    code can join on the same key as ``fetch_espn_scoreboard`` etc.
+
+    Silent no-op when ``THE_ODDS_API_KEY`` isn't set — returns ``{}``.
+    Each entry contains ``{"home_prob": float, "away_prob": float}``
+    with the two summing to 1.0.
+    """
+    from kalshi_sdk.pinnacle import pinnacle_probs_by_pair
+
+    raw = pinnacle_probs_by_pair(["basketball_wnba"])
+    if not raw:
+        return {}
+    name_to_tri = _team_name_to_tricode_map()
+    out: Dict[Tuple[str, str], Dict[str, float]] = {}
+    for pair_set, name_to_prob in raw.items():
+        # frozenset preserves the two names but not their order — we
+        # rebuild "away @ home" by joining against ESPN's team map.
+        names = list(pair_set)
+        if len(names) != 2:
+            continue
+        tri_by_name = {n: name_to_tri.get(n.lower()) for n in names}
+        if not all(tri_by_name.values()):
+            continue
+        # The devig helper stamped {home_name: p_home, away_name: p_away}
+        # in the SDK — but here we don't know which name is home/away.
+        # Both callers key by ``(away_tri, home_tri)`` so we emit both
+        # orderings pointing at the same probability dict.
+        (n1, n2) = names
+        p1, p2 = float(name_to_prob[n1]), float(name_to_prob[n2])
+        t1, t2 = tri_by_name[n1], tri_by_name[n2]
+        record = {n1: p1, n2: p2, t1: p1, t2: p2}
+        out[(t1, t2)] = record
+        out[(t2, t1)] = record
+    return out

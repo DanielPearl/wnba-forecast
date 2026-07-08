@@ -31,6 +31,7 @@ from .client import KalshiClient
 from .config import Config
 from .data_sources import (
     fetch_espn_injuries, fetch_espn_scoreboard, fetch_multi_season_panel,
+    fetch_pinnacle_probs_by_pair,
 )
 from .decision import make_decision, model_prob_yes
 from .features import (
@@ -342,6 +343,15 @@ class Bot:
             (ev["home_tricode"], ev["away_tricode"]): ev
             for ev in scoreboard_events
         }
+        # Pinnacle (sharp) devigged probs — same one-shot pull as tennis's
+        # export_watchlist. Cached for 5 min in kalshi_sdk.pinnacle so the
+        # cost stays under quota. Empty dict when THE_ODDS_API_KEY isn't
+        # set — every downstream caller tolerates the missing signal.
+        try:
+            pinnacle_by_pair = fetch_pinnacle_probs_by_pair()
+        except Exception as exc:  # noqa: BLE001
+            log.debug("pinnacle fetch failed at tick start: %s", exc)
+            pinnacle_by_pair = {}
         # Track previous-tick market YES prices per ticker so the live
         # adjustment can flag market overreactions (big move on price
         # without a corresponding move in the model's adjustment).
@@ -362,9 +372,28 @@ class Bot:
                                            model_median_price=None)
             if not ok:
                 skip_counts[why.split(" ")[0]] += 1
+            # Pinnacle YES-side prob for this market. WNBA tickers ask
+            # about a specific team (team_being_asked); we look up the
+            # devigged Pinnacle prob for THAT team and stamp it on the
+            # market_view so the sport adapter can surface it and the
+            # BUY gate can use it as the tennis-style reference.
+            pinnacle_yes_prob: float | None = None
+            pinn_entry = pinnacle_by_pair.get(
+                (m.away_tricode, m.home_tricode)
+            ) or pinnacle_by_pair.get(
+                (m.home_tricode, m.away_tricode)
+            )
+            if pinn_entry and getattr(m, "team_being_asked", ""):
+                v = pinn_entry.get(m.team_being_asked)
+                if v is not None:
+                    try:
+                        pinnacle_yes_prob = float(v)
+                    except (TypeError, ValueError):
+                        pinnacle_yes_prob = None
             verdict, reason, edge = self._record_view(
                 m, ob, dist, p_yes,
                 validator_passed=ok, validator_reason=why,
+                pinnacle_yes_prob=pinnacle_yes_prob,
             )
             verdicts.append((m, ob, dist, verdict, reason, edge))
 
@@ -558,7 +587,9 @@ class Bot:
 
     def _record_view(self, market, orderbook, dist, p_yes_raw,
                      validator_passed: bool,
-                     validator_reason: str) -> tuple[str, str, float]:
+                     validator_reason: str,
+                     pinnacle_yes_prob: float | None = None,
+                     ) -> tuple[str, str, float]:
         from .decision import blended_prob_yes
         if self._model:
             model_accuracy = self._model.metrics.get(
@@ -585,12 +616,21 @@ class Bot:
                                   model_accuracy=model_accuracy)
         raw_p_yes = p_yes_raw
 
+        # When Pinnacle is listed for this game, it becomes the reference
+        # probability for edge — mirroring tennis's export_watchlist logic
+        # (Pinnacle wins over the model as the "true" probability whenever
+        # both are present). When Pinnacle is missing we fall back to the
+        # blended posterior. This is what makes the WNBA and tennis BUY
+        # gates evaluate edge identically.
+        reference_p_yes = (pinnacle_yes_prob if pinnacle_yes_prob is not None
+                            else p_yes)
+
         edge_yes = edge_no = None
         half_spread_d = ((spread or 0) / 2.0) / 100.0
-        if p_yes is not None and yes_ask_c is not None:
-            edge_yes = p_yes - (yes_ask_c / 100.0) - half_spread_d
-        if p_yes is not None and no_ask_c is not None:
-            edge_no = (1.0 - p_yes) - (no_ask_c / 100.0) - half_spread_d
+        if reference_p_yes is not None and yes_ask_c is not None:
+            edge_yes = reference_p_yes - (yes_ask_c / 100.0) - half_spread_d
+        if reference_p_yes is not None and no_ask_c is not None:
+            edge_no = (1.0 - reference_p_yes) - (no_ask_c / 100.0) - half_spread_d
         # `confidence` is the secondary conviction metric. Compute from raw
         # for the same reason as low_model_confidence above: the blended
         # posterior hugs the market price by design, so using it here just
@@ -637,14 +677,20 @@ class Bot:
                 raw_no_edge = ((1.0 - raw_p_yes) - (no_ask_c / 100.0)
                                 if (raw_p_yes is not None and no_ask_c is not None)
                                 else None)
+                # Breakeven cushion is measured against the same
+                # reference probability as `edge_yes/edge_no` — Pinnacle
+                # when present, blended posterior otherwise. This keeps
+                # tennis / WNBA in lockstep.
                 yes_qual = (edge_yes is not None and edge_yes >= ev_floor
                              and yes_ask_c is not None
-                             and (p_yes - yes_ask_c / 100.0) >= be_floor
+                             and reference_p_yes is not None
+                             and (reference_p_yes - yes_ask_c / 100.0) >= be_floor
                              and raw_yes_edge is not None
                              and raw_yes_edge >= raw_floor)
                 no_qual = (edge_no is not None and edge_no >= ev_floor
                              and no_ask_c is not None
-                             and ((1.0 - p_yes) - no_ask_c / 100.0) >= be_floor
+                             and reference_p_yes is not None
+                             and ((1.0 - reference_p_yes) - no_ask_c / 100.0) >= be_floor
                              and raw_no_edge is not None
                              and raw_no_edge >= raw_floor)
                 # Hard cap on entry price.
@@ -686,6 +732,7 @@ class Bot:
             yes_ask_depth=(orderbook.yes_ask_depth() if orderbook else None),
             no_ask_depth=(orderbook.no_ask_depth() if orderbook else None),
             raw_model_prob_yes=raw_p_yes,
+            pinnacle_yes_prob=pinnacle_yes_prob,
         )
         if verdict == "BUY_YES":
             chosen_edge = edge_yes or 0.0

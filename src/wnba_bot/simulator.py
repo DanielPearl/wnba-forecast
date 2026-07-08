@@ -556,13 +556,20 @@ class Simulator:
         yes_ask_depth: int | None = None,
         no_ask_depth: int | None = None,
         raw_model_prob_yes: float | None = None,
+        pinnacle_yes_prob: float | None = None,
     ) -> None:
         with closing(self._conn()) as c, c:
             for col_def in ("rules_primary TEXT", "rules_secondary TEXT",
                             "event_title TEXT", "event_sub_title TEXT",
                             "volume INTEGER", "open_interest INTEGER",
                             "yes_ask_depth INTEGER", "no_ask_depth INTEGER",
-                            "raw_model_prob_yes REAL"):
+                            "raw_model_prob_yes REAL",
+                            # Devigged Pinnacle prob for the YES side. Nullable
+                            # (Pinnacle not always listed; THE_ODDS_API_KEY may
+                            # be absent). Used by _sport_adapter to emit
+                            # pinnacle_prob_a/b on the watchlist row and by the
+                            # shared BUY gate as the tennis-style reference.
+                            "pinnacle_yes_prob REAL"):
                 try:
                     c.execute(f"ALTER TABLE market_views ADD COLUMN {col_def}")
                 except sqlite3.OperationalError:
@@ -574,9 +581,9 @@ class Simulator:
                 "book_depth, edge_yes, edge_no, bot_verdict, rejection_reason, "
                 "rules_primary, rules_secondary, event_title, event_sub_title, "
                 "volume, open_interest, yes_ask_depth, no_ask_depth, "
-                "raw_model_prob_yes) "
+                "raw_model_prob_yes, pinnacle_yes_prob) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                "        ?, ?, ?, ?, ?, ?, ?, ?)",
+                "        ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (datetime.now(timezone.utc).isoformat(),
                  ticker, title, direction, strike_low, strike_high,
                  minutes_to_close, model_prob_yes,
@@ -584,7 +591,7 @@ class Simulator:
                  book_depth, edge_yes, edge_no, bot_verdict, rejection_reason,
                  rules_primary, rules_secondary, event_title, event_sub_title,
                  volume, open_interest, yes_ask_depth, no_ask_depth,
-                 raw_model_prob_yes),
+                 raw_model_prob_yes, pinnacle_yes_prob),
             )
 
     def recently_active_tickers(self, within_seconds: int = 86400) -> List[str]:
