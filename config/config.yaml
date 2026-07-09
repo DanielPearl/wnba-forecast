@@ -100,16 +100,19 @@ hedge:
   hedge_size_fraction: 1.0
 
 validators:
-  # Unified cautious floor across every Kalshi bot. See
-  # kalshi_sdk.validators.UNIFIED_VALIDATOR_DEFAULTS for the rationale.
-  min_book_depth_contracts: 100
+  # Liquidity floors dropped to the 1-contract minimum (2026-07-09,
+  # user request): with $1 test bets a deep book / traded volume buys
+  # nothing, and the unified 50/100/25 floors were blocking real
+  # edges on freshly-opened markets. The 6¢ spread cap remains the
+  # junk-book filter; price/time gates unchanged.
+  min_book_depth_contracts: 1
   max_spread_cents: 6
   min_minutes_to_close: 30
   max_minutes_to_close: 10080      # 7 days (NBA listing horizon)
   prob_bounds_cents: [25, 75]
-  min_volume: 50
-  min_open_interest: 50
-  min_depth_at_best_ask: 25
+  min_volume: 0
+  min_open_interest: 1
+  min_depth_at_best_ask: 1
   # NBA equivalent of basis-risk: skip the last 30 min before tip when
   # any rumor of a star scratching can move the line 5pp+. Field name
   # kept for cross-bot config-loader symmetry; "strike_window" is
