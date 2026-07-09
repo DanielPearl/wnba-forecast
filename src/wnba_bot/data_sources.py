@@ -716,9 +716,17 @@ def fetch_pinnacle_probs_by_pair(
     Each entry contains ``{"home_prob": float, "away_prob": float}``
     with the two summing to 1.0.
     """
-    from kalshi_sdk.pinnacle import pinnacle_probs_by_pair
+    from kalshi_sdk.pinnacle import benchmark_probs_by_pair_with_guest
 
-    raw = pinnacle_probs_by_pair(["basketball_wnba"])
+    # Sources merged, guest-priority:
+    #   1. Pinnacle guest API (basketball sport id) — catches games
+    #      Pinnacle prices before The Odds API redistributes them, and
+    #      picks up preseason / Commissioner's Cup fixtures that never
+    #      appear in the redistributed feed at all.
+    #   2. The Odds API cascade on ``basketball_wnba`` (Pinnacle →
+    #      Betfair Exchange UK / EU) as fallback.
+    raw = benchmark_probs_by_pair_with_guest(
+        ["basketball_wnba"], guest_sport="basketball")
     if not raw:
         return {}
     name_to_tri = _team_name_to_tricode_map()
