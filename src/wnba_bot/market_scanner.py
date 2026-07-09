@@ -127,16 +127,23 @@ def _split_body(body: str, team: Optional[str] = None) -> Optional[Tuple[str, st
     if team:
         team = normalize_tricode(team)
         # team is one of the two sides; figure out which end it occupies.
+        # Both halves are normalized so alias codes (Kalshi's PDX for
+        # the Portland Fire, canonical POR) can't produce mismatched
+        # sides for the same game.
         if body.startswith(team):
-            other = body[len(team):]
+            other = normalize_tricode(body[len(team):])
             if other:  # team is AWAY (listed first), other is HOME
                 return team, other
         if body.endswith(team):
-            other = body[:len(body) - len(team)]
+            other = normalize_tricode(body[:len(body) - len(team)])
             if other:  # team is HOME (listed last), other is AWAY
                 return other, team
-        return None
-    # No hint: search for a split point where both halves are known teams.
+        # The hint didn't match either end of the raw body. That
+        # happens when the suffix is an alias code whose canonical
+        # form differs from the body's raw spelling (ticker body says
+        # PDX, canonical team says POR) — fall through to the
+        # known-team-set split search instead of giving up.
+    # Search for a split point where both halves are known teams.
     for i in range(2, len(body) - 1):
         away, home = body[:i], body[i:]
         if normalize_tricode(away) in WNBA_TEAM_CODES and \

@@ -74,6 +74,11 @@ TEAM_TRICODE_ALIASES: Dict[str, str] = {
     "LVA": "LV",     # Las Vegas Aces
     "WAS": "WSH",    # Washington Mystics (ESPN uses WSH)
     "GSV": "GS",     # Golden State Valkyries
+    # Kalshi codes the Portland Fire as PDX in KXWNBAGAME tickers while
+    # ESPN (our canonical set) uses POR. Without this alias the ticker
+    # parser rejects every LV@PDX-style market and the game silently
+    # never appears on the watchlist (found 2026-07-09).
+    "PDX": "POR",    # Portland Fire (Kalshi ticker code)
 }
 
 # Current Kalshi WNBA team universe (used to split concatenated event
