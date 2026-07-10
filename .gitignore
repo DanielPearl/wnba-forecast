@@ -27,7 +27,7 @@ build/
 dist/
 
 # --- runtime data ---
-data/
+/data/
 logs/
 *.log
 *.jsonl
