@@ -55,6 +55,10 @@ TRADEABLE_LABELS = {"STRONG_EDGE", "SMALL_EDGE"}
 BENCHMARK_SPORT_KEY_PREFIX = "basketball_wnba"
 BENCHMARK_FALLBACK_KEYS = ["basketball_wnba"]
 GUEST_SPORT = "basketball"
+# Pinnacle guest league id for the WNBA (league-level fetch — see the
+# NBA exporter for why sport-level alone isn't enough).
+GUEST_LEAGUES = [578]
+_NON_H2H = ("winner", "champion", "mvp", "special", "series")
 
 
 def _now() -> datetime:
@@ -80,10 +84,13 @@ def _benchmark_lookup() -> Dict[frozenset, Dict[str, float]]:
     except ImportError:
         return {}
     try:
-        keys = (discover_sport_keys(BENCHMARK_SPORT_KEY_PREFIX)
-                or BENCHMARK_FALLBACK_KEYS)
+        keys = [k for k in
+                (discover_sport_keys(BENCHMARK_SPORT_KEY_PREFIX)
+                 or BENCHMARK_FALLBACK_KEYS)
+                if not any(x in k for x in _NON_H2H)]
         return benchmark_probs_by_pair_with_guest(
-            keys, guest_sport=GUEST_SPORT) or {}
+            keys, guest_sport=GUEST_SPORT,
+            guest_leagues=GUEST_LEAGUES) or {}
     except Exception:  # noqa: BLE001
         log.exception("benchmark lookup failed")
         return {}
