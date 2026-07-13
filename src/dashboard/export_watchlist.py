@@ -36,10 +36,10 @@ WATCHLIST_CSV = OUT_DIR / "watchlist.csv"
 # Trading gates — keep in lockstep with the MLB exporter's DEFAULTS.
 DEFAULTS = {
     "slippage": 0.02,
-    "min_edge": 0.05,            # SMALL_EDGE floor (benchmark prob − ask)
+    "min_edge": 0.09,            # SMALL_EDGE floor (benchmark prob − ask)
     "strong_edge": 0.10,
-    "min_entry_price": 0.15,     # per-side ask band, dollars
-    "max_entry_price": 0.80,
+    "min_entry_price": 0.30,     # per-side ask band, dollars
+    "max_entry_price": 0.60,
     "max_spread_cents": 6,
     "min_open_interest": 1,
     "max_edge": 0.15,           # suspect-benchmark ceiling
