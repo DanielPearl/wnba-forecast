@@ -42,6 +42,7 @@ DEFAULTS = {
     "max_entry_price": 0.80,
     "max_spread_cents": 6,
     "min_open_interest": 1,
+    "max_edge": 0.15,           # suspect-benchmark ceiling
     "prematch_buffer_minutes": 10,
 }
 
@@ -145,10 +146,12 @@ def build_watchlist_records(records: List[Dict[str, Any]],
 
         p_a, p_b, bench_start = _benchmark_for(
             benchmark, rec["team_a"], rec["team_b"])
-        if p_a is None and p_b is not None:
-            p_a = 1.0 - p_b
-        if p_b is None and p_a is not None:
-            p_b = 1.0 - p_a
+        # BOTH sides must match a benchmark pair. The old one-sided
+        # complement fallback (p_a = 1 − p_b) manufactured degenerate
+        # 0.500 'benchmark' probs from bad single-name matches, which
+        # bought fantasy +25pp edges overnight (2026-07-13 WNBA audit).
+        if p_a is None or p_b is None:
+            p_a = p_b = None
 
         # Tip-off comes from the benchmark feed (Kalshi has no usable
         # start time — see collapse_to_matches). No start time → the
@@ -180,6 +183,11 @@ def build_watchlist_records(records: List[Dict[str, Any]],
         else:
             gates = {
                 "edge": (side_edge or 0) >= cfg["min_edge"],
+                # Fake-edge guard: beyond max_edge the benchmark is
+                # almost certainly stale or mispaired (the By-edge
+                # ledger shows the 15pp+ bucket losing) — WATCH, never
+                # buy.
+                "edge_sane": (side_edge or 0) <= cfg.get("max_edge", 0.15),
                 "ev": (side_ev or 0) > 0,
                 "price_band": (side_price is not None
                                and cfg["min_entry_price"] <= side_price
