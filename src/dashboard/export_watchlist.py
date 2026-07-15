@@ -40,7 +40,9 @@ DEFAULTS = {
     "strong_edge": 0.10,
     "min_entry_price": 0.30,     # per-side ask band, dollars
     "max_entry_price": 0.60,
-    "max_spread_cents": 6,
+    # None = spread gate disabled (2026-07-15: user retired 6¢ cap
+    # across every bot).
+    "max_spread_cents": None,
     "min_open_interest": 1,
     "max_edge": 0.15,           # suspect-benchmark ceiling
     "prematch_buffer_minutes": 10,
@@ -194,9 +196,10 @@ def build_watchlist_records(records: List[Dict[str, Any]],
                                <= cfg["max_entry_price"]),
                 "open_interest": (side_mkt.get("open_interest") or 0)
                 >= cfg["min_open_interest"],
-                "spread": (side_mkt.get("spread_cents") is not None
-                           and side_mkt["spread_cents"]
-                           <= cfg["max_spread_cents"]),
+                "spread": (cfg["max_spread_cents"] is None
+                           or (side_mkt.get("spread_cents") is not None
+                               and side_mkt["spread_cents"]
+                               <= cfg["max_spread_cents"])),
                 "prematch": prematch,
             }
             eligible = all(gates.values())
