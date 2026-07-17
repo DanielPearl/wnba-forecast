@@ -137,6 +137,12 @@ def build_watchlist_records(records: List[Dict[str, Any]],
     cfg = {**DEFAULTS, **(cfg or {})}
     now = _now()
     rows: List[Dict[str, Any]] = []
+    # No open Kalshi markets → nothing to benchmark. Skip the odds
+    # lookup entirely so an off-season / between-slates bot doesn't
+    # burn paid Odds-API credits every tick (2026-07: quota exhausted
+    # twice; empty-slate polling was a top consumer).
+    if not records:
+        return rows
     benchmark = _benchmark_lookup()
 
     for rec in records:
