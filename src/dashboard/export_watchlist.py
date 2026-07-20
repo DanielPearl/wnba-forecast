@@ -100,7 +100,9 @@ def _benchmark_lookup() -> Dict[frozenset, Dict[str, float]]:
 
 
 def _benchmark_for(lookup: Dict[frozenset, Dict[str, float]],
-                   team_a: str, team_b: str):
+                   team_a: str, team_b: str,
+                   near_start_iso: str | None = None,
+                   max_delta_hours: float = 18.0):
     """(prob_a, prob_b, start_iso) from the lookup, tolerant of
     name-casing and alias drift between Kalshi codes and the books.
     ``start_iso`` is the book's scheduled tip-off — the only reliable
@@ -115,6 +117,15 @@ def _benchmark_for(lookup: Dict[frozenset, Dict[str, float]],
                    for w in (want_a, want_b)):
                 probs = p
                 break
+    if not probs:
+        return None, None, None
+    # Same-pair series guard (2026-07-20): NPB/KBO/MLB series put the
+    # SAME two teams on the feed for consecutive days; select the
+    # entry whose scheduled start is nearest OUR game, and refuse a
+    # line whose game is more than the window away — tonight's
+    # in-play line must never benchmark tomorrow's contract.
+    from kalshi_sdk.pinnacle import pick_pair_entry
+    probs = pick_pair_entry(probs, near_start_iso, max_delta_hours)
     if not probs:
         return None, None, None
 
@@ -152,8 +163,12 @@ def build_watchlist_records(records: List[Dict[str, Any]],
                 and mkt_b.get("ticker")):
             continue
 
+        # Anchor same-pair selection to the game DATE from the ticker
+        # (no tip time on Kalshi) — noon UTC sits within 18h of any
+        # US-evening tip, and consecutive-day games are 24h apart.
+        _near = (f"{rec['date']}T12:00:00Z" if rec.get("date") else None)
         p_a, p_b, bench_start = _benchmark_for(
-            benchmark, rec["team_a"], rec["team_b"])
+            benchmark, rec["team_a"], rec["team_b"], near_start_iso=_near)
         # BOTH sides must match a benchmark pair. The old one-sided
         # complement fallback (p_a = 1 − p_b) manufactured degenerate
         # 0.500 'benchmark' probs from bad single-name matches, which
