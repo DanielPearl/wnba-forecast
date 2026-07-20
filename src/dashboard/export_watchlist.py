@@ -190,8 +190,11 @@ def build_watchlist_records(records: List[Dict[str, Any]],
         ask_a, ask_b = mkt_a.get("yes_ask"), mkt_b.get("yes_ask")
         edge_a = (p_a - ask_a) if (p_a is not None and ask_a) else None
         edge_b = (p_b - ask_b) if (p_b is not None and ask_b) else None
-        ev_a = (edge_a - cfg["slippage"]) if edge_a is not None else None
-        ev_b = (edge_b - cfg["slippage"]) if edge_b is not None else None
+        from kalshi_sdk.validators import kalshi_entry_fee
+        ev_a = ((edge_a - cfg["slippage"] - kalshi_entry_fee(ask_a))
+                if edge_a is not None else None)
+        ev_b = ((edge_b - cfg["slippage"] - kalshi_entry_fee(ask_b))
+                if edge_b is not None else None)
 
         side, side_edge, side_ev = "A", edge_a, ev_a
         side_price, side_mkt = ask_a, mkt_a
