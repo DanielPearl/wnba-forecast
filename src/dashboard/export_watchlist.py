@@ -206,16 +206,9 @@ def build_watchlist_records(records: List[Dict[str, Any]],
                 # ledger shows the 15pp+ bucket losing) — WATCH, never
                 # buy.
                 "edge_sane": (side_edge or 0) <= cfg.get("max_edge", 0.15),
-                "ev": (side_ev or 0) > 0,
                 "price_band": (side_price is not None
                                and cfg["min_entry_price"] <= side_price
                                <= cfg["max_entry_price"]),
-                "open_interest": (side_mkt.get("open_interest") or 0)
-                >= cfg["min_open_interest"],
-                "spread": (cfg["max_spread_cents"] is None
-                           or (side_mkt.get("spread_cents") is not None
-                               and side_mkt["spread_cents"]
-                               <= cfg["max_spread_cents"])),
                 "prematch": prematch,
             }
             eligible = all(gates.values())
