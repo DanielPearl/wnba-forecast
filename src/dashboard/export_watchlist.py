@@ -34,19 +34,11 @@ WATCHLIST_JSON = OUT_DIR / "watchlist.json"
 WATCHLIST_CSV = OUT_DIR / "watchlist.csv"
 
 # Trading gates — keep in lockstep with the MLB exporter's DEFAULTS.
-DEFAULTS = {
-    "slippage": 0.02,
-    "min_edge": 0.09,            # SMALL_EDGE floor (benchmark prob − ask)
-    "strong_edge": 0.10,
-    "min_entry_price": 0.30,     # per-side ask band, dollars
-    "max_entry_price": 0.60,
-    # None = spread gate disabled (2026-07-15: user retired 6¢ cap
-    # across every bot).
-    "max_spread_cents": None,
-    "min_open_interest": 1,
-    "max_edge": 0.15,           # suspect-benchmark ceiling
-    "prematch_buffer_minutes": 10,
-}
+from kalshi_sdk.buy_criteria import exporter_defaults as _shared_defaults
+
+# Buy gates come from THE shared module (kalshi_sdk.buy_criteria) —
+# user 2026-07-21: one location for every bot, no per-repo copies.
+DEFAULTS = _shared_defaults()
 
 TRADEABLE_LABELS = {"STRONG_EDGE", "SMALL_EDGE"}
 
